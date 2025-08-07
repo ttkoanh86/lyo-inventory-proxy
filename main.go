@@ -153,6 +153,10 @@ func main() {
 	// Add authentication middleware
 	r.Use(authMiddleware(vk, vk_ctx))
 
+	r.GET("/heartbeat", func(c *gin.Context) {
+		c.AbortWithStatus(200)
+	})
+
 	r.PATCH("/account", func(c *gin.Context) {
 		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
 		var ua UserAccount
