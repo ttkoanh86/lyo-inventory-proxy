@@ -21,7 +21,8 @@ import (
 )
 
 const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com" // Replace with your actual API
-const allowOrigin = "http://localhost:5173"
+var allowOrigin = "http://localhost:5173"
+
 const allowCreds = "true"
 
 var token = ""
@@ -73,6 +74,8 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 
 		c.Header("Access-Control-Allow-Origin", allowOrigin)
 		c.Header("Access-Control-Allow-Credentials", allowCreds)
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization")
 
 		if c.Request.Method == "OPTIONS" {
@@ -99,6 +102,7 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 				return
 			}
 
+			vk.Do(vk_ctx, vk.B().Set().Key(authKey).Value(us).Ex(30*60*60).Build())
 			c.Next()
 		}
 
@@ -106,8 +110,16 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 }
 
 func main() {
+
 	godotenv.Load()
 	token = os.Getenv("SAPO_ACCESS_TOKEN")
+
+	if os.Getenv("MODE") == "development" {
+		allowOrigin = os.Getenv("ALLOW_ORIGIN_DEV")
+	} else {
+		allowOrigin = os.Getenv("ALLOW_ORIGIN_PROD")
+	}
+
 	// fmt.Println(token)
 	// Connect to Valkey server
 	vk, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{"localhost:6379"}})
@@ -251,6 +263,7 @@ func main() {
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 
 		var ua UserAccount
 		var uname string
@@ -275,9 +288,9 @@ func main() {
 
 				token := generateRandomToken()
 				if isadmin {
-					vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").Build())
+					vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
 				} else {
-					vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).Build())
+					vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).ExSeconds(30*60*60).Build())
 				}
 
 				c.JSON(200, gin.H{"token": token, "isadmin": isadmin})
