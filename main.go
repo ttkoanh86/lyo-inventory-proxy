@@ -83,7 +83,7 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 		}
 
 		fmt.Println(c.Request.URL.Path)
-		if c.Request.URL.Path == "/auth" {
+		if c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
 		} else {
