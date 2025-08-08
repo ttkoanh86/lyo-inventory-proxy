@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
+"time"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -112,6 +112,7 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 }
 
 func main() {
+	time.Sleep(1 * time.Second)
 
 	godotenv.Load()
 	upstream_token = os.Getenv("SAPO_ACCESS_TOKEN")
