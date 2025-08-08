@@ -25,7 +25,7 @@ var allowOrigin = "http://localhost:5173"
 
 const allowCreds = "true"
 
-var token = ""
+var upstream_token = ""
 
 var vk valkey.Client
 var vk_ctx context.Context
@@ -97,12 +97,14 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 			authKey := strings.Split(authHeader, " ")[1]
 			u := vk.Do(vk_ctx, vk.B().Get().Key(authKey).Build())
 			us, err := u.ToString()
+
 			if err != nil || us == "" {
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 				return
 			}
 
-			vk.Do(vk_ctx, vk.B().Set().Key(authKey).Value(us).Ex(30*60*60).Build())
+			// vk.Do(vk_ctx, vk.B().Set().Key(authKey).Value(us)(30*60*60).Build())
+
 			c.Next()
 		}
 
@@ -112,7 +114,7 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 func main() {
 
 	godotenv.Load()
-	token = os.Getenv("SAPO_ACCESS_TOKEN")
+	upstream_token = os.Getenv("SAPO_ACCESS_TOKEN")
 
 	if os.Getenv("MODE") == "development" {
 		allowOrigin = os.Getenv("ALLOW_ORIGIN_DEV")
@@ -120,7 +122,6 @@ func main() {
 		allowOrigin = os.Getenv("ALLOW_ORIGIN_PROD")
 	}
 
-	// fmt.Println(token)
 	// Connect to Valkey server
 	vk, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{"localhost:6379"}})
 	vk_ctx = context.Background()
@@ -158,7 +159,7 @@ func main() {
 	})
 
 	r.PATCH("/account", func(c *gin.Context) {
-		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
 		var ua UserAccount
 		c.BindJSON(&ua)
 
@@ -182,7 +183,7 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		target := c.Query("userid")
-		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
 		userID, _ := vk.Do(vk_ctx, vk.B().Get().Key(token).Build()).ToString()
 
 		if userID == "admin" {
@@ -201,7 +202,7 @@ func main() {
 
 		var users []UserListEntry = make([]UserListEntry, 0)
 
-		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
 		userID, _ := vk.Do(vk_ctx, vk.B().Get().Key(token).Build()).ToString()
 
 		if userID == "admin" {
@@ -233,7 +234,7 @@ func main() {
 
 		var ua UserAccount
 		c.BindJSON(&ua)
-		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
 		userID, _ := vk.Do(vk_ctx, vk.B().Get().Key(token).Build()).ToString()
 
 		if userID == "admin" {
@@ -251,7 +252,7 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
-		token = strings.Split(c.GetHeader("Authorization"), " ")[1]
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
 
 		x := vk.Do(vk_ctx, vk.B().Del().Key(token).Build())
 
@@ -337,7 +338,7 @@ func main() {
 			}
 		}
 
-		req.Header.Add("X-Sapo-Access-Token", token)
+		req.Header.Set("X-Sapo-Access-Token", upstream_token)
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
@@ -346,7 +347,6 @@ func main() {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach upstream API"})
 			return
 		} else {
-			// fmt.Println(resp.Request.Body)
 		}
 		defer resp.Body.Close()
 
