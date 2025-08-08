@@ -159,7 +159,7 @@ func main() {
 	r.Use(authMiddleware(vk, vk_ctx))
 
 	r.GET("/heartbeat", func(c *gin.Context) {
-		c.AbortWithStatus(200)
+		c.JSON(200, gin.H{})
 	})
 
 	r.PATCH("/account", func(c *gin.Context) {
@@ -181,7 +181,7 @@ func main() {
 
 	})
 
-	r.DELETE("/account/", func(c *gin.Context) {
+	r.DELETE("/account", func(c *gin.Context) {
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
@@ -300,6 +300,7 @@ func main() {
 		var isadmin bool
 		c.BindJSON(&ua)
 		row := stmt_get_user.QueryRow(ua.Username)
+		verifyOnly := c.Query("verifyOnly") == "true"
 
 		if row.Err() == nil {
 
@@ -314,14 +315,19 @@ func main() {
 				// 1: unprivileged account
 				// 2: privileged account
 
-				token := generateRandomToken()
-				if isadmin {
-					vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
+				if verifyOnly {
+					c.JSON(200, gin.H{})
 				} else {
-					vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).ExSeconds(30*60*60).Build())
+					token := generateRandomToken()
+					if isadmin {
+						vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
+					} else {
+						vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).ExSeconds(30*60*60).Build())
+					}
+
+					c.JSON(200, gin.H{"token": token, "isadmin": isadmin})
 				}
 
-				c.JSON(200, gin.H{"token": token, "isadmin": isadmin})
 			} else {
 				c.AbortWithStatus(http.StatusUnauthorized)
 			}
