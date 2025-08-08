@@ -29,4 +29,4 @@ RUN go build -o server .
 EXPOSE 8080
 
 # Start Valkey and the Gin server in parallel
-CMD ["sh", "-c", "valkey-server --daemonize yes --port 6379 && ./server"]
+CMD ["sh", "-c", "valkey-server ./valkey.conf && ./server"]
