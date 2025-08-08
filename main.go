@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
-"time"
+	"time"
+
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -21,6 +22,8 @@ import (
 )
 
 const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com" // Replace with your actual API
+const allowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+
 var allowOrigin = "http://localhost:5173"
 
 const allowCreds = "true"
@@ -74,7 +77,7 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 
 		c.Header("Access-Control-Allow-Origin", allowOrigin)
 		c.Header("Access-Control-Allow-Credentials", allowCreds)
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization")
 
@@ -137,7 +140,7 @@ func main() {
 		panic(err)
 	}
 
-	stmt_create_user, err = db.Prepare("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES ( ?, ?, ?, 0)")
+	stmt_create_user, err = db.Prepare("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES ( ?, ?, ?, ?)")
 
 	stmt_get_user, err = db.Prepare("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?")
 
@@ -228,8 +231,7 @@ func main() {
 
 	})
 
-	r.POST("/account", func(c *gin.Context) {
-
+	r.POST("/admin-account", func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
@@ -240,7 +242,27 @@ func main() {
 
 		if userID == "admin" {
 			hash, salt := hashWithRandomSalt([]byte(ua.Password))
-			stmt_create_user.Exec(ua.Username, hash, salt)
+			stmt_create_user.Exec(ua.Username, hash, salt, 1)
+			c.AbortWithStatus(200)
+		} else {
+			c.AbortWithStatus(http.StatusUnauthorized)
+		}
+
+	})
+
+	r.POST("/account", func(c *gin.Context) {
+
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
+
+		var ua UserAccount
+		c.BindJSON(&ua)
+		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
+		userID, _ := vk.Do(vk_ctx, vk.B().Get().Key(token).Build()).ToString()
+		fmt.Println(userID)
+		if userID == "admin" {
+			hash, salt := hashWithRandomSalt([]byte(ua.Password))
+			stmt_create_user.Exec(ua.Username, hash, salt, 0)
 			c.AbortWithStatus(200)
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
@@ -269,7 +291,7 @@ func main() {
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
 		var ua UserAccount
 		var uname string
@@ -318,7 +340,7 @@ func main() {
 
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
 		proxyPath := c.Param("proxyPath")
 		targetURL := targetAPI + proxyPath
