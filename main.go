@@ -127,7 +127,7 @@ func main() {
 	}
 
 	// Connect to Valkey server
-	vk, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{"localhost:6379"}})
+	vk, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{os.Getenv("VALKEY_ADDRESS")}})
 	vk_ctx = context.Background()
 
 	if err != nil {
