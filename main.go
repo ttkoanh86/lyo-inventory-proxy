@@ -89,8 +89,25 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 		if c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
+		} else if c.Request.URL.Path == "/check_only" {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+				return
+			}
+
+			authKey := strings.Split(authHeader, " ")[1]
+
+			u := vk.Do(vk_ctx, vk.B().Get().Key(authKey).Build())
+			us, err := u.ToString()
+
+			if err != nil || us == "" {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			} else {
+				c.AbortWithStatus(http.StatusAccepted)
+			}
 		} else {
-			// TODO: Implement actual auth logic (e.g. check token, API key, etc.)
 			authHeader := c.GetHeader("Authorization")
 			if authHeader == "" {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -178,6 +195,10 @@ func main() {
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
+
+	})
+
+	r.GET("/check_only", func(c *gin.Context) {
 
 	})
 
