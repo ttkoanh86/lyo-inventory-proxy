@@ -332,7 +332,8 @@ func main() {
 		var salt []byte
 		var isadmin bool
 		c.BindJSON(&ua)
-		row := stmt_get_user.QueryRow(ua.Username)
+		//cũ: row := stmt_get_user.QueryRow(ua.Username)
+		row := db.QueryRow("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?", ua.Username)
 		verifyOnly := c.Query("verifyOnly") == "true"
 
 		if row.Err() == nil {
