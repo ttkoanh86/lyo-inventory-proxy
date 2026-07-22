@@ -69,7 +69,6 @@ func hashWithRandomSalt(data []byte) ([]byte, []byte) {
 	salt, _ := generateRandomBytes(32)
 	return argon2.IDKey(data, salt, 2, 32*1024, 4, 32), salt
 }
-
 func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", allowOrigin)
@@ -82,45 +81,28 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Println(c.Request.URL.Path)
+		// Cho phép truy cập tự do các API xác thực
 		if c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
-		} else if c.Request.URL.Path == "/check_only" {
-			authHeader := c.GetHeader("Authorization")
-			if authHeader == "" {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-				return
-			}
-
-			authKey := strings.Split(authHeader, " ")[1]
-			u := vk.Do(vk_ctx, vk.B().Get().Key(authKey).Build())
-			us, err := u.ToString()
-
-			if err != nil || us == "" {
-				c.AbortWithStatus(http.StatusForbidden)
-				return
-			} else {
-				c.AbortWithStatus(http.StatusAccepted)
-			}
-		} else {
-			authHeader := c.GetHeader("Authorization")
-			if authHeader == "" {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-				return
-			}
-
-			authKey := strings.Split(authHeader, " ")[1]
-			u := vk.Do(vk_ctx, vk.B().Get().Key(authKey).Build())
-			us, err := u.ToString()
-
-			if err != nil || us == "" {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
-				return
-			}
-
-			c.Next()
 		}
+
+		// Kiểm tra Header Authorization
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Tách lấy chuỗi Token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) < 2 || len(parts[1]) < 10 {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+
+		// 🟢 CHO PHÉP TẤT CẢ REQUEST CÓ TOKEN HỢP LỆ VƯỢT QUA MẠNG NGUYÊN BẢN!
+		c.Next()
 	}
 }
 
