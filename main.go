@@ -21,13 +21,11 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com" // Replace with your actual API
+const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com"
 const allowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 var allowOrigin = "http://localhost:5173"
-
 const allowCreds = "true"
-
 var upstream_token = ""
 
 var vk valkey.Client
@@ -74,15 +72,14 @@ func hashWithRandomSalt(data []byte) ([]byte, []byte) {
 
 func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		c.Header("Access-Control-Allow-Origin", allowOrigin)
 		c.Header("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
-
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(200)
+			return
 		}
 
 		fmt.Println(c.Request.URL.Path)
@@ -97,7 +94,6 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 			}
 
 			authKey := strings.Split(authHeader, " ")[1]
-
 			u := vk.Do(vk_ctx, vk.B().Get().Key(authKey).Build())
 			us, err := u.ToString()
 
@@ -123,11 +119,8 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 				return
 			}
 
-			// vk.Do(vk_ctx, vk.B().Set().Key(authKey).Value(us)(30*60*60).Build())
-
 			c.Next()
 		}
-
 	}
 }
 
@@ -143,8 +136,6 @@ func main() {
 		allowOrigin = os.Getenv("ALLOW_ORIGIN_PROD")
 	}
 
-	// Connect to Valkey server
-	// code cu: vk, err = valkey.NewClient(valkey.ClientOption{InitAddress: []string{os.Getenv("VALKEY_ADDRESS")}})
 	var err error
 	vk, err = valkey.NewClient(valkey.ClientOption{InitAddress: []string{os.Getenv("VALKEY_ADDRESS")}})
 	vk_ctx = context.Background()
@@ -153,37 +144,30 @@ func main() {
 		panic(err)
 	}
 
-	// Connect to database server
 	db, err := sql.Open("mysql", os.Getenv("MYSQL_ACCESS_STRING"))
 	if err != nil {
 		panic(err)
 	}
 
 	stmt_create_user, err = db.Prepare("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES ( ?, ?, ?, ?)")
-
 	stmt_get_user, err = db.Prepare("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?")
-
 	stmt_remove_user, err = db.Prepare("DELETE FROM users WHERE username=?")
-
 	stmt_update_pwd, err = db.Prepare("UPDATE users SET pwd_hash = ?, pwd_salt = ? WHERE username = ?")
-
 	stmt_list_every_users, err = db.Prepare("SELECT username, is_admin FROM users")
 
-// Tự động khởi tạo tài khoản admin nếu chưa có
+	// Tự động khởi tạo tài khoản admin nếu chưa có
 	hash, salt := hashWithRandomSalt([]byte("lyo12345"))
 	db.Exec("DELETE FROM users WHERE username = 'admin'")
 	_, errAdmin := db.Exec("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES (?, ?, ?, 1)", "admin", hash, salt)
 	if errAdmin != nil {
-    	fmt.Println("Loi tao admin:", errAdmin)
+		fmt.Println("Loi tao admin:", errAdmin)
 	} else {
-    	fmt.Println("==> DA TAO THANH CONG ADMIN PASS: lyo12345")
+		fmt.Println("==> DA TAO THANH CONG ADMIN PASS: lyo12345")
 	}
+
 	r := gin.Default()
 
-	// Enable Gzip compression for all
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
-
-	// Add authentication middleware
 	r.Use(authMiddleware(vk, vk_ctx))
 
 	r.GET("/heartbeat", func(c *gin.Context) {
@@ -198,15 +182,12 @@ func main() {
 		userID, _ := vk.Do(vk_ctx, vk.B().Get().Key(token).Build()).ToString()
 
 		if userID == "admin" || userID == ua.Username {
-
 			hash, salt := hashWithRandomSalt([]byte(ua.Password))
-
 			stmt_update_pwd.Exec(hash, salt, ua.Username)
 			c.AbortWithStatus(200)
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
-
 	})
 
 	r.GET("/check_only", func(c *gin.Context) {
@@ -214,7 +195,6 @@ func main() {
 	})
 
 	r.DELETE("/account", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
@@ -228,11 +208,9 @@ func main() {
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
-
 	})
 
 	r.GET("/all-accounts", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
@@ -246,6 +224,7 @@ func main() {
 
 			if err != nil {
 				c.AbortWithStatus(http.StatusInternalServerError)
+				return
 			}
 
 			var user UserListEntry
@@ -256,11 +235,9 @@ func main() {
 			}
 
 			c.JSON(200, users)
-
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
-
 	})
 
 	r.POST("/admin-account", func(c *gin.Context) {
@@ -279,11 +256,9 @@ func main() {
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
-
 	})
 
 	r.POST("/account", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
@@ -299,11 +274,9 @@ func main() {
 		} else {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}
-
 	})
 
 	r.DELETE("/revoke", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
@@ -316,11 +289,9 @@ func main() {
 		}
 
 		c.AbortWithStatus(200)
-
 	})
 
 	r.POST("/auth", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
@@ -330,49 +301,41 @@ func main() {
 		var hash []byte
 		var salt []byte
 		var isadmin bool
-		c.BindJSON(&ua)
-		//cũ: row := stmt_get_user.QueryRow(ua.Username)
-		row := db.QueryRow("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?", ua.Username)
-		verifyOnly := c.Query("verifyOnly") == "true"
 
-		// 🔐 CHO PHÉP TÀI KHOẢN ADMIN ĐĂNG NHẬP THẲNG KHÔNG CẦN QUA DATABASE
-	if ua.Username == "admin" && ua.Password == "lyo12345" {
-		token := generateRandomToken()
-		vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
-		c.JSON(200, gin.H{
-			"token":   token,
-			"isadmin": true,
-		})
-		return
-	}
-
-	// Nếu không phải admin thì mới kiểm tra Database
-	if row.Err() == nil {
-		err := row.Scan(&uname, &hash, &salt, &isadmin)
-		if err == nil && bytes.Equal(hash, hashWithKnownSalt([]byte(ua.Password), salt)) {
-			token := generateRandomToken()
-			vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).ExSeconds(30*60*60).Build())
-			c.JSON(200, gin.H{"token": token, "isadmin": isadmin})
+		if err := c.BindJSON(&ua); err != nil {
+			c.AbortWithStatus(400)
 			return
 		}
-	}
 
-	// Đăng nhập thất bại
-	c.AbortWithStatus(http.StatusUnauthorized)
-			}
-
-		} else {
-
-			c.AbortWithStatus(http.StatusUnauthorized)
+		// 🔐 CHO PHÉP TÀI KHOẢN ADMIN ĐĂNG NHẬP THẲNG KHÔNG CẦN QUA DATABASE
+		if ua.Username == "admin" && ua.Password == "lyo12345" {
+			token := generateRandomToken()
+			vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
+			c.JSON(200, gin.H{
+				"token":   token,
+				"isadmin": true,
+			})
+			return
 		}
 
-		// row.Close()
+		// Nếu không phải admin mặc định thì kiểm tra Database
+		row := db.QueryRow("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?", ua.Username)
+		if row.Err() == nil {
+			err := row.Scan(&uname, &hash, &salt, &isadmin)
+			if err == nil && bytes.Equal(hash, hashWithKnownSalt([]byte(ua.Password), salt)) {
+				token := generateRandomToken()
+				vk.Do(vk_ctx, vk.B().Set().Key(token).Value(ua.Username).ExSeconds(30*60*60).Build())
+				c.JSON(200, gin.H{"token": token, "isadmin": isadmin})
+				return
+			}
+		}
 
+		// Đăng nhập thất bại
+		c.AbortWithStatus(http.StatusUnauthorized)
 	})
 
 	// Proxy all /api/* requests to the target API
 	r.Any("/api/*proxyPath", func(c *gin.Context) {
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
@@ -386,10 +349,8 @@ func main() {
 			return
 		}
 
-		// Copy query params
 		req.URL.RawQuery = c.Request.URL.RawQuery
 
-		// Copy headers
 		for key, values := range c.Request.Header {
 			for _, value := range values {
 				req.Header.Add(key, value)
@@ -401,21 +362,17 @@ func main() {
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach upstream API"})
 			return
-		} else {
 		}
 		defer resp.Body.Close()
 
-		// Copy response headers
 		for key, values := range resp.Header {
 			for _, value := range values {
 				c.Writer.Header().Add(key, value)
 			}
 		}
 
-		// Set status and forward the response body
 		c.Status(resp.StatusCode)
 		io.Copy(c.Writer, resp.Body)
 	})
