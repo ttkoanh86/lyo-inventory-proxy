@@ -49,7 +49,6 @@ type UserListEntry struct {
 
 func generateRandomToken() string {
 	b, _ := generateRandomBytes(16)
-	//cũ return base64.RawStdEncoding.EncodeToString(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -298,12 +297,17 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
 		var ua UserAccount
+		var uname string
+		var hash []byte
+		var salt []byte
+		var isadmin bool
+
 		if err := c.BindJSON(&ua); err != nil {
 			c.AbortWithStatus(400)
 			return
 		}
 
-		// 🔐 ĐẮNG NHẬP TRỰC TIẾP TÀI KHOẢN ADMIN
+		// 🔐 ĐĂNG NHẬP TRỰC TIẾP TÀI KHOẢN ADMIN
 		if ua.Username == "admin" && ua.Password == "lyo12345" {
 			token := generateRandomToken()
 			vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
@@ -313,9 +317,6 @@ func main() {
 			})
 			return
 		}
-
-		c.AbortWithStatus(http.StatusUnauthorized)
-	})
 
 		// Nếu không phải admin mặc định thì kiểm tra Database
 		row := db.QueryRow("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?", ua.Username)
