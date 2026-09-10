@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com"
+const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com/api"
 const allowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 var allowOrigin = "http://localhost:5173"
