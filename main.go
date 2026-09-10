@@ -69,9 +69,15 @@ func hashWithRandomSalt(data []byte) ([]byte, []byte) {
 	salt, _ := generateRandomBytes(32)
 	return argon2.IDKey(data, salt, 2, 32*1024, 4, 32), salt
 }
+
 func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Header("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Header("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Header("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization")
@@ -81,27 +87,23 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 			return
 		}
 
-		// Cho phép truy cập tự do các API xác thực
 		if c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
 		}
 
-		// Kiểm tra Header Authorization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
-		// Tách lấy chuỗi Token
 		parts := strings.Split(authHeader, " ")
 		if len(parts) < 2 || len(parts[1]) < 10 {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 			return
 		}
 
-		// 🟢 CHO PHÉP TẤT CẢ REQUEST CÓ TOKEN HỢP LỆ VƯỢT QUA MẠNG NGUYÊN BẢN!
 		c.Next()
 	}
 }
@@ -137,7 +139,6 @@ func main() {
 	stmt_update_pwd, err = db.Prepare("UPDATE users SET pwd_hash = ?, pwd_salt = ? WHERE username = ?")
 	stmt_list_every_users, err = db.Prepare("SELECT username, is_admin FROM users")
 
-	// Tự động khởi tạo tài khoản admin nếu chưa có
 	hash, salt := hashWithRandomSalt([]byte("lyo12345"))
 	db.Exec("DELETE FROM users WHERE username = 'admin'")
 	_, errAdmin := db.Exec("INSERT INTO users (username, pwd_hash, pwd_salt, is_admin) VALUES (?, ?, ?, 1)", "admin", hash, salt)
@@ -172,12 +173,15 @@ func main() {
 		}
 	})
 
-	r.GET("/check_only", func(c *gin.Context) {
-
-	})
+	r.GET("/check_only", func(c *gin.Context) {})
 
 	r.DELETE("/account", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		target := c.Query("userid")
@@ -193,7 +197,12 @@ func main() {
 	})
 
 	r.GET("/all-accounts", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		var users []UserListEntry = make([]UserListEntry, 0)
@@ -223,7 +232,12 @@ func main() {
 	})
 
 	r.POST("/admin-account", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		var ua UserAccount
@@ -241,7 +255,12 @@ func main() {
 	})
 
 	r.POST("/account", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		var ua UserAccount
@@ -259,7 +278,12 @@ func main() {
 	})
 
 	r.DELETE("/revoke", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 
 		token := strings.Split(c.GetHeader("Authorization"), " ")[1]
@@ -274,7 +298,12 @@ func main() {
 	})
 
 	r.POST("/auth", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
@@ -289,7 +318,6 @@ func main() {
 			return
 		}
 
-		// 🔐 ĐĂNG NHẬP TRỰC TIẾP TÀI KHOẢN ADMIN
 		if ua.Username == "admin" && ua.Password == "lyo12345" {
 			token := generateRandomToken()
 			vk.Do(vk_ctx, vk.B().Set().Key(token).Value("admin").ExSeconds(30*60*60).Build())
@@ -300,7 +328,6 @@ func main() {
 			return
 		}
 
-		// Nếu không phải admin mặc định thì kiểm tra Database
 		row := db.QueryRow("SELECT username, pwd_hash, pwd_salt, is_admin FROM users WHERE username=?", ua.Username)
 		if row.Err() == nil {
 			err := row.Scan(&uname, &hash, &salt, &isadmin)
@@ -312,13 +339,17 @@ func main() {
 			}
 		}
 
-		// Đăng nhập thất bại
 		c.AbortWithStatus(http.StatusUnauthorized)
 	})
 
 	// Proxy all /api/* requests to the target API
 	r.Any("/api/*proxyPath", func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		reqOrigin := c.GetHeader("Origin")
+		if reqOrigin != "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
@@ -334,6 +365,10 @@ func main() {
 		req.URL.RawQuery = c.Request.URL.RawQuery
 
 		for key, values := range c.Request.Header {
+			// Bỏ qua header Authorization gốc từ Frontend gửi lên
+			if strings.EqualFold(key, "Authorization") {
+				continue
+			}
 			for _, value := range values {
 				req.Header.Add(key, value)
 			}
@@ -349,7 +384,11 @@ func main() {
 		}
 		defer resp.Body.Close()
 
+		// 🟢 BỎ QUA CÁC HEADER CORS TỪ SAPO ĐỂ TRÁNH XUNG ĐỘT KHÔNG BỊ TRÌNH DUYỆT CHẶN
 		for key, values := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+				continue
+			}
 			for _, value := range values {
 				c.Writer.Header().Add(key, value)
 			}
