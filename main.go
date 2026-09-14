@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const targetAPI = "https://lyochuyenhanghanquoc.mysapogo.com"
+const targetAPI = "https://lyovn.mysapogo.com"
 const allowedMethods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 var allowOrigin = "http://localhost:5173"
@@ -118,7 +118,7 @@ func main() {
 	godotenv.Load()
 	upstream_token = os.Getenv("SAPO_ACCESS_TOKEN")
 	if upstream_token == "" {
-		upstream_token = "42cd092e162a446ca26b6ae8c9902d78"
+		upstream_token = "b3e0a88853e2496c9641800adb465097"
 	}
 
 	if os.Getenv("MODE") == "development" {
