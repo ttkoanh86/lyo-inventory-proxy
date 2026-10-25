@@ -102,7 +102,8 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 			return
 		}
 
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") || c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
+		// 🟢 Cho phép cả /api/ và /sapo-action đi qua mà không cần xác thực token người dùng
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") || strings.HasPrefix(c.Request.URL.Path, "/sapo-action") || c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
 		}
@@ -427,7 +428,7 @@ func main() {
 	})
 
 	// 🟢 ROUTE HỦY ĐƠN HÀNG SAPO ĐỘC LẬP
-	r.POST("/api/sapo/cancel-order", handleCancelSapoOrderGin)
+	r.POST("/sapo-action/cancel-order", handleCancelSapoOrderGin)
 
 	// 🟢 HÀM XỬ LÝ PROXY TẤT CẢ API /api/* SANG SAPO
 	r.Any("/api/*proxyPath", func(c *gin.Context) {
