@@ -364,3 +364,151 @@ func main() {
 
 	r.Run("0.0.0.0:8080")
 }
+// Struct nhận dữ liệu từ giao diện web gửi lên
+type CancelOrderReq struct {
+	OrderCode string `json:"orderCode"`
+	Note      string `json:"note"`
+}
+
+// Struct gửi lệnh hủy chuẩn sang API Sapo Omni
+type SapoCancelPayload struct {
+	ReasonCancelID int64  `json:"reason_cancel_id"`
+	Note           string `json:"note"`
+	Restock        bool   `json:"restock"`
+}
+
+// Hàm xử lý riêng biệt: Không đụng chạm vào cache hay logic cũ
+func handleCancelSapoOrder(w http.ResponseWriter, r *http.Request) {
+	// Bật CORS cho phép frontend gọi an toàn
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"success":false,"message":"Chỉ chấp nhận phương thức POST"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CancelOrderReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.OrderCode) == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Thiếu mã đơn hàng hợp lệ",
+		})
+		return
+	}
+
+	orderCode := strings.TrimSpace(req.OrderCode)
+	note := req.Note
+	if note == "" {
+		note = "Hủy tự động qua hệ thống"
+	}
+
+	// Lấy Domain và Token Sapo từ cấu hình môi trường hoặc hằng số có sẵn trong main.go
+	sapoDomain := os.Getenv("SAPO_OMNI_DOMAIN")
+	if sapoDomain == "" {
+		sapoDomain = "lyo.mysapogo.com" // Điền domain chính xác của bạn nếu không dùng ENV
+	}
+	sapoToken := os.Getenv("SAPO_OMNI_TOKEN")
+	if sapoToken == "" {
+		sapoToken = "YOUR_SAPO_TOKEN_HERE" // Điền token Sapo nếu không dùng ENV
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	// BƯỚC 1: Tìm kiếm Order ID theo mã đơn
+	searchURL := fmt.Sprintf("https://%s/admin/orders.json?query=%s", sapoDomain, url.QueryEscape(orderCode))
+	searchReq, _ := http.NewRequest(http.MethodGet, searchURL, nil)
+	searchReq.Header.Set("X-Sapo-Access-Token", sapoToken)
+	searchReq.Header.Set("Content-Type", "application/json")
+
+	searchResp, err := client.Do(searchReq)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": "Lỗi kết nối tới Sapo: " + err.Error()})
+		return
+	}
+	defer searchResp.Body.Close()
+
+	var searchResult struct {
+		Orders []struct {
+			ID          int64  `json:"id"`
+			OrderNumber string `json:"order_number"`
+			Name        string `json:"name"`
+			Code        string `json:"code"`
+			Status      string `json:"status"`
+		} `json:"orders"`
+	}
+
+	if err := json.NewDecoder(searchResp.Body).Decode(&searchResult); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": "Lỗi đọc dữ liệu Sapo"})
+		return
+	}
+
+	var targetOrderID int64
+	for _, o := range searchResult.Orders {
+		if strings.EqualFold(o.OrderNumber, orderCode) || strings.EqualFold(o.Name, orderCode) || strings.EqualFold(o.Code, orderCode) {
+			if o.Status == "cancelled" {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success": true,
+					"message": fmt.Sprintf("Đơn hàng %s đã được hủy trước đó.", orderCode),
+				})
+				return
+			}
+			targetOrderID = o.ID
+			break
+		}
+	}
+
+	if targetOrderID == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": fmt.Sprintf("Không tìm thấy đơn hàng %s trên Sapo", orderCode),
+		})
+		return
+	}
+
+	// BƯỚC 2: Gửi lệnh POST hủy đơn với đúng payload test chuẩn
+	cancelURL := fmt.Sprintf("https://%s/admin/orders/%d/cancel.json", sapoDomain, targetOrderID)
+	cancelBody, _ := json.Marshal(SapoCancelPayload{
+		ReasonCancelID: 14585447,
+		Note:           note,
+		Restock:        true,
+	})
+
+	cancelReq, _ := http.NewRequest(http.MethodPost, cancelURL, bytes.NewBuffer(cancelBody))
+	cancelReq.Header.Set("X-Sapo-Access-Token", sapoToken)
+	cancelReq.Header.Set("Content-Type", "application/json")
+
+	cancelResp, err := client.Do(cancelReq)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": "Lỗi khi gửi lệnh hủy đơn: " + err.Error()})
+		return
+	}
+	defer cancelResp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	if cancelResp.StatusCode == http.StatusOK || cancelResp.StatusCode == http.StatusCreated {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("Đã hủy thành công đơn %s và hoàn kho!", orderCode),
+		})
+	} else {
+		respBodyBytes, _ := io.ReadAll(cancelResp.Body)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": fmt.Sprintf("Sapo từ chối [%d]: %s", cancelResp.StatusCode, string(respBodyBytes)),
+		})
+	}
+}
