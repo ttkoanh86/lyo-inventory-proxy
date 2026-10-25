@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
@@ -72,7 +71,6 @@ func hashWithRandomSalt(data []byte) ([]byte, []byte) {
 
 func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Thiết lập Header CORS linh hoạt theo Origin gửi lên
 		origin := c.GetHeader("Origin")
 		if origin != "" {
 			c.Header("Access-Control-Allow-Origin", origin)
@@ -81,21 +79,18 @@ func authMiddleware(vk valkey.Client, vk_ctx context.Context) gin.HandlerFunc {
 		}
 		c.Header("Access-Control-Allow-Credentials", allowCreds)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethods)
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization, X-Requested-With")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Accept-Encoding, Authorization, X-Requested-With, X-Sapo-Access-Token")
 
-		// Trả về ngay lập tức cho request Preflight (OPTIONS)
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(200)
 			return
 		}
 
-		// 🟢 Bỏ qua kiểm tra Token tài khoản đối với các API Proxy Sapo (/api/*) và API hệ thống
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") || c.Request.URL.Path == "/auth" || c.Request.URL.Path == "/heartbeat" {
 			c.Next()
 			return
 		}
 
-		// Kiểm tra Header Authorization cho các chức năng quản lý tài khoản nội bộ
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -156,8 +151,6 @@ func main() {
 	}
 
 	r := gin.Default()
-
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	r.Use(authMiddleware(vk, vk_ctx))
 
 	r.GET("/heartbeat", func(c *gin.Context) {
@@ -300,27 +293,34 @@ func main() {
 		c.AbortWithStatus(http.StatusUnauthorized)
 	})
 
-	// 🟢 HÀM XỬ LÝ PROXY TẤT CẢ API /api/* SANG SAPO
+	// 🟢 XỬ LÝ CHUYỂN TIẾP CHUẨN XÁC TẤT CẢ REQUEST SANG SAPO
 	r.Any("/api/*proxyPath", func(c *gin.Context) {
 		proxyPath := c.Param("proxyPath")
-		
-		// Đảm bảo luôn có dấu / ở đầu proxyPath để không bị dính liền domain gây lỗi 404
 		if !strings.HasPrefix(proxyPath, "/") {
 			proxyPath = "/" + proxyPath
 		}
-		
 		targetURL := targetAPI + proxyPath
 
-		req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+		// Đọc toàn vẹn body request (tránh trường hợp stream bị đứt quãng trên POST)
+		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read request body"})
 			return
 		}
 
+		req, err := http.NewRequest(c.Request.Method, targetURL, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upstream request"})
+			return
+		}
+
+		// Giữ nguyên toàn bộ Query Parameters trên URL (VD: reason_cancel_id, restock, query, limit...)
 		req.URL.RawQuery = c.Request.URL.RawQuery
 
+		// Forward đầy đủ các header cần thiết
 		for key, values := range c.Request.Header {
-			if key == "Host" || key == "Authorization" {
+			lowerKey := strings.ToLower(key)
+			if lowerKey == "host" || strings.HasPrefix(lowerKey, "access-control-") {
 				continue
 			}
 			for _, value := range values {
@@ -328,18 +328,19 @@ func main() {
 			}
 		}
 
-		// Đính kèm Token Sapo chính chủ
-		req.Header.Set("X-Sapo-Access-Token", upstream_token)
+		// Đồng bộ cả 2 chuẩn token xác thực của Sapo
+		cleanToken := strings.TrimPrefix(upstream_token, "Bearer ")
+		req.Header.Set("X-Sapo-Access-Token", cleanToken)
+		req.Header.Set("Authorization", "Bearer "+cleanToken)
 
-		client := &http.Client{}
+		client := &http.Client{Timeout: 45 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach upstream API"})
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach Sapo API"})
 			return
 		}
 		defer resp.Body.Close()
 
-		// Copy response headers từ Sapo nhưng loại bỏ header CORS trùng lặp
 		for key, values := range resp.Header {
 			if strings.HasPrefix(strings.ToLower(key), "access-control-") {
 				continue
@@ -349,7 +350,6 @@ func main() {
 			}
 		}
 
-		// Bổ sung Header CORS chuẩn xác cho Frontend nhận dữ liệu
 		origin := c.GetHeader("Origin")
 		if origin != "" {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
